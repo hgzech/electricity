@@ -73,7 +73,9 @@
   #chartLabel { margin-top: 18px; font-size: 13px; color: var(--text-2); }
   #chart { display: block; width: 100%; height: auto; margin-top: 6px; overflow: visible; }
   #chart text { font: 11px var(--font); fill: var(--text-2); }
-  #chart .bar { cursor: pointer; }
+  #chart { touch-action: pan-y; -webkit-user-select: none; user-select: none; }   /* sideways drag = scrub, up/down = scroll */
+  #chart .avg { fill: var(--text); font-weight: 600; }
+  #chartLabel.read { color: var(--text); font-weight: 600; }
 
   .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
   .tile { background: var(--card); border-radius: 12px; padding: 12px 14px; }
@@ -254,15 +256,20 @@ function bands(date) {
 }
 
 const W = 340, TOP = 12, BASE = 132;
+let scrub = null;                      // finger position on the chart, 0..1 of its width, while pressing; else null
+const avgLine = (y, label) =>
+  `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--text-2)" stroke-width="1" stroke-dasharray="4 3"/>` +
+  `<text class="avg" x="${W}" y="${(y - 4).toFixed(1)}" text-anchor="end">${label}</text>`;
 function drawChart(id) {
   const svg = $("chart");
   const t = id ? today[id] : null;
   const d = new Date(now());
-  let out = "";
+  let out = "", read = null;           // read: what the finger points at, shown instead of the chart label
   if (range === "day") {
     const start = t && t.date === iso(d) ? t.start : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const pts = Object.entries(asObj(t && t.date === iso(d) ? t.w : null)).map(([i, v]) => [+i * 300000 + 150000, v])
       .sort((a, b) => a[0] - b[0]);
+    const avg = pts.length ? pts.reduce((a, p) => a + p[1], 0) / pts.length : null;   // mean of the 5-min means
     const L = id && live[id];
     if (L && typeof L.w === "number" && hubUp() && L.online !== false) pts.push([now() - start, L.w]);
     const max = niceMax(Math.max(10, ...pts.map(p => p[1])) * 1.05);
@@ -280,6 +287,18 @@ function drawChart(id) {
       for (const p of pts) { if (prev != null && p[0] - prev > 900000) flush(); seg.push(p); prev = p[0]; }
       flush();
       out += `<path d="${area}" fill="var(--accent-soft)"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"/>`;
+      if (avg != null) out += avgLine(Y(avg), `avg ${avg < 10 ? avg.toFixed(1) : Math.round(avg)} W`);
+      if (scrub != null) {                                 // nearest reading to the finger
+        const ms = scrub * 86400000;
+        const p = pts.reduce((b, q) => Math.abs(q[0] - ms) < Math.abs(b[0] - ms) ? q : b);
+        if (Math.abs(p[0] - ms) < 1800000) {
+          const last = p === pts[pts.length - 1] && L && p[1] === L.w;
+          out += `<line x1="${X(p[0])}" y1="${TOP}" x2="${X(p[0])}" y2="${BASE}" stroke="var(--text)" stroke-width="1"/>` +
+                 `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="4" fill="var(--accent)" stroke="var(--bg)" stroke-width="2"/>`;
+          const a = start + p[0] - (last ? 0 : 150000);
+          read = last ? `Now · ${Math.round(p[1])} W` : `${hhmm(a)}–${hhmm(a + 300000)} · ${p[1] < 10 ? p[1].toFixed(1) : Math.round(p[1])} W on average`;
+        }
+      }
     } else out += `<text x="${W / 2}" y="${(TOP + BASE) / 2}" text-anchor="middle">No readings yet today</text>`;
     for (const h of [0, 6, 12, 18, 24]) out += `<text x="${X(h * 3600000)}" y="${BASE + 16}" text-anchor="${h === 0 ? "start" : h === 24 ? "end" : "middle"}">${h}</text>`;
     $("chartLabel").textContent = "Today, power" + (prices() && prices().pr !== prices().pn ? " (shaded: reduced price)" : "");
@@ -287,18 +306,53 @@ function drawChart(id) {
     const B = buckets(id), max = niceMax(Math.max(0.01, ...B.map(b => b.kwh)) * 1.1), n = B.length, bw = W / n;
     out += `<line x1="0" y1="${TOP}" x2="${W}" y2="${TOP}" stroke="var(--sep)"/><line x1="0" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="var(--text-3)" stroke-width=".6"/>`;
     out += `<text x="0" y="${TOP + 12}">${max} kWh</text>`;
+    const hot = scrub != null ? B[Math.min(n - 1, Math.max(0, Math.floor(scrub * n)))] : null;
+    if (hot) read = `${hot.name} · ${kwhFmt(hot.kwh)} kWh` + (hot.cost != null ? ` · ${eur(hot.cost)}` : "");
+    const sel = hot ? hot.key : picked;
     B.forEach((b, i) => {
       const h = b.kwh / max * (BASE - TOP), x = i * bw + bw * .17, wdt = bw * .66;
       const fill = b.partial ? "var(--accent-faint)" : "var(--accent)";
-      const op = picked && picked !== b.key ? ' opacity=".35"' : "";
+      const op = sel && sel !== b.key ? ' opacity=".35"' : "";
       if (h > 0) out += `<rect class="bar" data-k="${b.key}" x="${x.toFixed(1)}" y="${(BASE - h).toFixed(1)}" width="${wdt.toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" rx="${Math.min(3, wdt / 3).toFixed(1)}" fill="${fill}"${op}/>`;
       out += `<rect class="bar" data-k="${b.key}" x="${(i * bw).toFixed(1)}" y="${TOP}" width="${bw.toFixed(1)}" height="${BASE - TOP + 20}" fill="transparent"/>`;
       if (b.label) out += `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${BASE + 16}" text-anchor="middle">${b.label}</text>`;
     });
+    // average over the bars with data; today's (or this month's) unfinished bar only if it's the only one
+    let withData = B.filter(b => b.kwh > 0 && !b.partial);
+    if (!withData.length) withData = B.filter(b => b.kwh > 0);
+    if (withData.length) {
+      const a = withData.reduce((s, b) => s + b.kwh, 0) / withData.length;
+      out += avgLine((BASE - a / max * (BASE - TOP)).toFixed(1), `avg ${kwhFmt(a)} kWh`);
+    }
     $("chartLabel").textContent = range === "year" ? "This year, energy per month" : `${range === "week" ? "This week" : MONTHS_LONG[d.getMonth()]}, energy per day`;
   }
   svg.innerHTML = out;
-  for (const r of svg.querySelectorAll(".bar")) r.onclick = () => { picked = picked === r.dataset.k ? null : r.dataset.k; render(); };
+  $("chartLabel").classList.toggle("read", !!read);
+  if (read) $("chartLabel").textContent = read;
+}
+
+// press and slide along the chart to read values; on the bar charts, letting go on a bar selects it (tap it again
+// to go back to the whole period). Vertical swipes still scroll the page (touch-action: pan-y).
+{
+  const svg = $("chart");
+  let down = null;
+  const at = (e) => { const r = svg.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
+  svg.addEventListener("pointerdown", (e) => { down = { x: e.clientX, moved: false }; scrub = at(e); svg.setPointerCapture(e.pointerId); render(); });
+  svg.addEventListener("pointermove", (e) => {
+    if (!down) return;
+    if (Math.abs(e.clientX - down.x) > 6) down.moved = true;
+    scrub = at(e); render();
+  });
+  const end = (e, cancelled) => {
+    if (!down) return;
+    if (!cancelled && range !== "day") {
+      const B = buckets(plugId()), b = B[Math.min(B.length - 1, Math.floor(at(e) * B.length))];
+      picked = !down.moved && picked === b.key ? null : b.key;
+    }
+    down = null; scrub = null; render();
+  };
+  svg.addEventListener("pointerup", (e) => end(e, false));
+  svg.addEventListener("pointercancel", (e) => end(e, true));      // the page took over to scroll
 }
 
 // bars of the current week / month / year: [{key, label, kwh, cost, partial}]
