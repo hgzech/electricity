@@ -267,36 +267,46 @@ function drawChart(id) {
   let out = "", read = null;           // read: what the finger points at, shown instead of the chart label
   if (range === "day") {
     const start = t && t.date === iso(d) ? t.start : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const pts = Object.entries(asObj(t && t.date === iso(d) ? t.w : null)).map(([i, v]) => [+i * 300000 + 150000, v])
-      .sort((a, b) => a[0] - b[0]);
-    const avg = pts.length ? pts.reduce((a, p) => a + p[1], 0) / pts.length : null;   // mean of the 5-min means
-    const L = id && live[id];
-    if (L && typeof L.w === "number" && hubUp() && L.online !== false) pts.push([now() - start, L.w]);
-    const max = niceMax(Math.max(10, ...pts.map(p => p[1])) * 1.05);
+    // steps: [from ms, to ms, W or null (plug unavailable)] since midnight; each reading holds until the next one
+    const L = id && live[id], nowMs = now() - start;
+    const raw = readings(t && t.date === iso(d) ? t : null);
+    const liveOk = L && typeof L.w === "number" && hubUp() && L.online !== false;
+    if (liveOk && (!raw.length || raw[raw.length - 1][1] !== L.w)) raw.push([Math.max(nowMs - 1, raw.length ? raw[raw.length - 1][0] : 0), L.w]);
+    // the last reading holds until now; if the hub or plug is out, only until the hub's last sign of life
+    const lastEnd = liveOk ? nowMs : Math.min(nowMs, heartbeat != null ? heartbeat - start : 0);
+    const steps = raw.map(([ms, v], i) => [ms, i + 1 < raw.length ? raw[i + 1][0] : Math.max(ms, lastEnd), v]).filter(s => s[1] > s[0]);
+    let wSum = 0, tSum = 0;
+    for (const [a, b, v] of steps) if (v != null) { wSum += v * (b - a); tSum += b - a; }
+    const avg = tSum > 0 ? wSum / tSum : null;          // time-weighted: the same as energy / time measured
+    const max = niceMax(Math.max(10, ...steps.map(s => s[2] || 0)) * 1.05);
     const X = (ms) => (ms / 86400000 * W).toFixed(1), Y = (v) => (BASE - v / max * (BASE - TOP)).toFixed(1);
+    const pts = steps;
     for (const [a, b] of bands(d)) out += `<rect x="${X(a * 3600000)}" y="${TOP}" width="${(X(b * 3600000) - X(a * 3600000)).toFixed(1)}" height="${BASE - TOP}" fill="var(--band)"/>`;
     out += `<line x1="0" y1="${TOP}" x2="${W}" y2="${TOP}" stroke="var(--sep)"/><line x1="0" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="var(--text-3)" stroke-width=".6"/>`;
     out += `<text x="0" y="${TOP + 12}">${max >= 1000 ? max / 1000 + " kW" : max + " W"}</text>`;
-    if (pts.length) {
-      // gaps of more than 15 min (plug offline, hub down) break the line
-      let line = "", prev = null;
-      for (const [ms, v] of pts) { line += (prev == null || ms - prev > 900000 ? "M" : "L") + X(ms) + "," + Y(v) + " "; prev = ms; }
-      let area = "", seg = [];
-      const flush = () => { if (seg.length > 1) area += `M${X(seg[0][0])},${BASE} ` + seg.map(([m, v]) => `L${X(m)},${Y(v)}`).join(" ") + ` L${X(seg[seg.length - 1][0])},${BASE} Z `; seg = []; };
-      prev = null;
-      for (const p of pts) { if (prev != null && p[0] - prev > 900000) flush(); seg.push(p); prev = p[0]; }
-      flush();
-      out += `<path d="${area}" fill="var(--accent-soft)"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"/>`;
+    if (pts.some(s => s[2] != null)) {
+      // a step line: flat while a reading holds, straight up/down when it changes; unavailable stretches are gaps
+      let line = "", area = "", open = false, segStart = 0;
+      for (const [a, b, v] of pts) {
+        if (v == null) { if (open) area += `L${X(a)},${BASE} Z `; open = false; continue; }
+        if (!open) { line += `M${X(a)},${Y(v)} `; area += `M${X(a)},${BASE} L${X(a)},${Y(v)} `; open = true; segStart = a; }
+        else { line += `L${X(a)},${Y(v)} `; area += `L${X(a)},${Y(v)} `; }
+        line += `L${X(b)},${Y(v)} `; area += `L${X(b)},${Y(v)} `;
+      }
+      if (open) area += `L${X(pts[pts.length - 1][1])},${BASE} Z`;
+      out += `<path d="${area}" fill="var(--accent-soft)"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="round"/>`;
       if (avg != null) out += avgLine(Y(avg), `avg ${avg < 10 ? avg.toFixed(1) : Math.round(avg)} W`);
-      if (scrub != null) {                                 // nearest reading to the finger
+      if (scrub != null) {                                 // the reading that held at the finger's time
         const ms = scrub * 86400000;
-        const p = pts.reduce((b, q) => Math.abs(q[0] - ms) < Math.abs(b[0] - ms) ? q : b);
-        if (Math.abs(p[0] - ms) < 1800000) {
-          const last = p === pts[pts.length - 1] && L && p[1] === L.w;
-          out += `<line x1="${X(p[0])}" y1="${TOP}" x2="${X(p[0])}" y2="${BASE}" stroke="var(--text)" stroke-width="1"/>` +
-                 `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="4" fill="var(--accent)" stroke="var(--bg)" stroke-width="2"/>`;
-          const a = start + p[0] - (last ? 0 : 150000);
-          read = last ? `Now · ${Math.round(p[1])} W` : `${hhmm(a)}–${hhmm(a + 300000)} · ${p[1] < 10 ? p[1].toFixed(1) : Math.round(p[1])} W on average`;
+        const s = pts.find(([a, b]) => ms >= a && ms < b) ||
+                  (ms >= pts[pts.length - 1][1] && ms - pts[pts.length - 1][1] < 1800000 ? pts[pts.length - 1] : null);
+        if (s) {
+          const x = X(Math.min(ms, s[1]));
+          out += `<line x1="${x}" y1="${TOP}" x2="${x}" y2="${BASE}" stroke="var(--text)" stroke-width="1"/>`;
+          if (s[2] != null) out += `<circle cx="${x}" cy="${Y(s[2])}" r="4" fill="var(--accent)" stroke="var(--bg)" stroke-width="2"/>`;
+          const isNow = s === pts[pts.length - 1] && liveOk;
+          const val = s[2] == null ? "plug not reachable" : `${s[2] < 10 ? s[2].toFixed(1) : Math.round(s[2])} W`;
+          read = isNow ? `Since ${hhmm(start + s[0])} · ${val} (now)` : `${hhmm(start + s[0])}–${hhmm(start + s[1])} · ${val}`;
         }
       }
     } else out += `<text x="${W / 2}" y="${(TOP + BASE) / 2}" text-anchor="middle">No readings yet today</text>`;
@@ -353,6 +363,18 @@ function drawChart(id) {
   };
   svg.addEventListener("pointerup", (e) => end(e, false));
   svg.addEventListener("pointercancel", (e) => end(e, true));      // the page took over to scroll
+}
+
+// today's readings from the hub: raw {hHH: "sec:W,sec:W,..."} -> [[ms since midnight, W or null]], in time order
+function readings(t) {
+  if (!t || !t.raw) return [];
+  const out = [];
+  for (const k of Object.keys(t.raw).sort())
+    for (const item of String(t.raw[k]).split(",")) {
+      const [s, v] = item.split(":");
+      if (s !== "" && !isNaN(+s)) out.push([+s * 1000, v === "" || v == null || isNaN(+v) ? null : +v]);
+    }
+  return out.sort((a, b) => a[0] - b[0]);
 }
 
 // bars of the current week / month / year: [{key, label, kwh, cost, partial}]
@@ -420,8 +442,8 @@ function projection(D, p, d) {
   }
   // no full day yet: today's rate over the hours actually measured (a new plug may have started this afternoon)
   const t = D[iso(d)], tw = today[plugId()];
-  const idx = tw && tw.date === iso(d) ? Object.keys(asObj(tw.w)).map(Number) : [];
-  const measured = frac - (idx.length ? Math.min(...idx) * 300000 / 86400000 : 0);
+  const first = readings(tw && tw.date === iso(d) ? tw : null).find(r => r[1] != null && r[1] > 0);
+  const measured = frac - (first ? first[0] / 86400000 : 0);
   if (!t || measured < 1 / 24) return null;
   return dayCost(t, p) / measured * daysIn;
 }
@@ -470,13 +492,20 @@ function startPreview() {
   $("app").hidden = false; $("signout").hidden = true; $("simBox").hidden = false;
   const id = "sample_plug", d = new Date(), t0 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   let s = 7; const r = () => { s = s * 16807 % 2147483647; return s / 2147483647; };
-  const w = {}, nowIdx = Math.floor((d.getTime() - t0) / 300000);
-  for (let i = 0; i < nowIdx; i++) w[i] = Math.round((i % 7 < 3 ? 120 + r() * 50 : 2 + r() * 5) * 10) / 10;
+  // readings like the plug's: a compressor step every ~35 min, small changes in between
+  const raw = {}, nowS = Math.floor((d.getTime() - t0) / 1000);
+  for (let s = 0, on = false; s < nowS; ) {
+    const v = on ? 166 + r() * 8 : 1 + r() * 4;
+    (raw["h" + pad(Math.floor(s / 3600))] ??= []).push(`${s}:${v.toFixed(1)}`);
+    s += on ? (r() < .3 ? 60 : 900 + r() * 300) | 0 : (r() < .5 ? 40 : 1200 + r() * 300) | 0;
+    if (r() > .25) on = !on;
+  }
+  const w = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, v.join(",")]));
   const D = {};
   for (let k = 0; k < 40; k++) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() - k); const v = k ? 0.8 + r() * 0.35 : (d.getHours() + 1) / 24; D[iso(x)] = { n: +(v * .78).toFixed(3), r: +(v * .22).toFixed(3) }; }
   const base = () => {
     live = { [id]: { online: true, on: true, w: 168.4, label: "Fridge", ts: Date.now() - 4000 } };
-    today = { [id]: { date: iso(d), start: t0, step: 300, w } }; days = { [id]: D };
+    today = { [id]: { date: iso(d), start: t0, raw: w } }; days = { [id]: D };
     settings = { price_normal: 0.2, price_reduced: 0.13, reduced_summer: DEFAULT_HOURS.summer, reduced_winter: DEFAULT_HOURS.winter };
     heartbeat = Date.now() - 5000; connected = true; everConnected = true;
   };
