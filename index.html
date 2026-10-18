@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0e10" media="(prefers-color-scheme: dark)">
+<title>Electricity</title>
+<!-- Smart plugs on the phone (metering only, no switching). Source: hub/web/plugs/index.html; published copy:
+     github.com/hgzech/electricity (GitHub Pages, hgzech.github.io/electricity).
+     Reads /plugs on the Europe database (hgzech-home), written by the hub app hub/apps/plug-phone; writes only
+     /plugs/settings (prices, reduced hours) and /plugs/names (rules: hub/firebase/database.rules.json).
+     ?preview opens a design preview with sample data and a "Simulate" menu (no sign-in, nothing read or written). -->
+
+<!-- ===================== LOOK (colours, sizes, layout) — change freely, no logic here ===================== -->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --card: #f4f4f6;            /* metric tiles, settings panel */
+    --text: #111114;
+    --text-2: #6b6b72;
+    --text-3: #a0a0a8;
+    --sep: rgba(0, 0, 0, .08);
+    --accent: #2563eb;          /* chart line and bars */
+    --accent-soft: rgba(37, 99, 235, .14);
+    --accent-faint: rgba(37, 99, 235, .35);   /* today's unfinished bar */
+    --band: rgba(118, 118, 128, .09);         /* reduced-price hours on the day chart */
+    --pill-on-bg: #111114; --pill-on-text: #ffffff;
+    --ok: #22a559; --warn: #b7700a; --bad: #e5484d;
+    --gutter: 16px;
+    --font: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0e0e10; --card: #1c1c1f; --text: #f2f2f4; --text-2: #a0a0a8; --text-3: #6c6c74;
+      --sep: rgba(255, 255, 255, .09); --accent: #5b8cff; --accent-soft: rgba(91, 140, 255, .2);
+      --accent-faint: rgba(91, 140, 255, .4); --band: rgba(255, 255, 255, .05);
+      --pill-on-bg: #f2f2f4; --pill-on-text: #0e0e10; --ok: #34c46e; --warn: #f0a040; --bad: #ff6369;
+    }
+  }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font: 17px/1.35 var(--font); -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+  main { max-width: 560px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 18px) var(--gutter) calc(env(safe-area-inset-bottom) + 32px); }
+  button { font: inherit; color: inherit; touch-action: manipulation; }
+  [hidden] { display: none !important; }
+
+  .top { display: flex; align-items: center; justify-content: space-between; }
+  .name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+  #dot.ok { background: var(--ok); } #dot.warn { background: var(--warn); } #dot.bad { background: var(--bad); }
+  .icon-btn { flex: none; width: 44px; height: 44px; margin-right: -10px; border: 0; background: none; border-radius: 50%;
+              display: grid; place-items: center; color: var(--text-2); }
+  .icon-btn:active { background: var(--card); }
+  .icon-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #problem { font-size: 14px; color: var(--warn); margin-top: 2px; }
+  #problem:empty { display: none; }
+
+  .hero { margin-top: 22px; display: flex; align-items: baseline; gap: 6px; }
+  #watts { font-size: 64px; font-weight: 600; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  #watts.stale { color: var(--text-3); }
+  .unit { font-size: 24px; color: var(--text-2); }
+  #sub { margin-top: 6px; font-size: 15px; color: var(--text-2); }
+
+  .pills { display: flex; gap: 6px; margin-top: 22px; }
+  .pills button { border: 0; border-radius: 999px; padding: 7px 15px; background: none; color: var(--text-2); font-size: 15px; font-weight: 500; }
+  .pills button[aria-pressed="true"] { background: var(--pill-on-bg); color: var(--pill-on-text); }
+
+  #chartLabel { margin-top: 18px; font-size: 13px; color: var(--text-2); }
+  #chart { display: block; width: 100%; height: auto; margin-top: 6px; overflow: visible; }
+  #chart text { font: 11px var(--font); fill: var(--text-2); }
+  #chart .bar { cursor: pointer; }
+
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+  .tile { background: var(--card); border-radius: 12px; padding: 12px 14px; }
+  .tile .l { font-size: 13px; color: var(--text-2); }
+  .tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile .v small { font-size: 14px; font-weight: 400; color: var(--text-2); }
+  .link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; }
+  .proj { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding: 0 2px; }
+  .proj .l { font-size: 15px; color: var(--text-2); }
+  .proj .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* settings */
+  #settings { margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--card); }
+  #settings h2 { margin: 0 0 10px; font-size: 17px; }
+  .f2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .fld { display: block; margin-bottom: 10px; }
+  .fld span { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+  .fld input { width: 100%; box-sizing: border-box; height: 40px; border: 1px solid var(--sep); border-radius: 10px; padding: 0 10px;
+               background: var(--bg); color: var(--text); font: 16px var(--font); }
+  .hint { font-size: 13px; color: var(--text-2); margin: -4px 0 10px; }
+  #setErr { font-size: 13px; color: var(--bad); margin-bottom: 8px; }
+  #setErr:empty { display: none; }
+  .btns { display: flex; justify-content: flex-end; gap: 8px; }
+  .btns button { border: 0; border-radius: 999px; padding: 9px 18px; background: none; font-weight: 600; }
+  .btns .primary { background: var(--pill-on-bg); color: var(--pill-on-text); }
+
+  #signin-box { text-align: center; padding-top: 30vh; }
+  #signin { border: 0; border-radius: 999px; padding: 12px 22px; background: var(--pill-on-bg); color: var(--pill-on-text); font-weight: 600; }
+  #signout { display: block; margin: 28px auto 0; background: none; border: 0; color: var(--text-2); font-size: 15px; padding: 10px; }
+  #simBox { margin-top: 28px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-2); }
+  #simBox select { flex: 1; font: 15px var(--font); padding: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <div id="signin-box" hidden>
+    <p>Sign in to see your plugs.</p>
+    <button id="signin">Sign in with Google</button>
+  </div>
+
+  <div id="app" hidden>
+    <div class="top">
+      <div class="name"><h1 id="name">Plug</h1><span id="dot"></span></div>
+      <button class="icon-btn" id="gear" aria-label="Settings" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+    <div id="problem" role="status"></div>
+
+    <form id="settings" hidden novalidate>
+      <h2>Settings</h2>
+      <label class="fld"><span>Plug name</span><input id="sName" maxlength="40" autocomplete="off"></label>
+      <div class="f2">
+        <label class="fld"><span>Normal price, €/kWh</span><input id="sPn" inputmode="decimal" placeholder="0.20"></label>
+        <label class="fld"><span>Reduced price, €/kWh</span><input id="sPr" inputmode="decimal" placeholder="0.13"></label>
+      </div>
+      <div class="f2">
+        <label class="fld"><span>Reduced, Apr–Oct</span><input id="sHs" placeholder="02-04,11-15" autocomplete="off"></label>
+        <label class="fld"><span>Reduced, Nov–Mar</span><input id="sHw" placeholder="02-05,12-15" autocomplete="off"></label>
+      </div>
+      <p class="hint">Prices from your bill. Reduced hours of the two-zone tariff, every day of the week. Leave the reduced price empty if you're not on that tariff.</p>
+      <div id="setErr"></div>
+      <div class="btns"><button type="button" id="setCancel">Cancel</button><button type="submit" class="primary">Save</button></div>
+    </form>
+
+    <div class="hero"><span id="watts">–</span><span class="unit">W</span></div>
+    <div id="sub"></div>
+
+    <div class="pills" role="group" aria-label="Time range">
+      <button data-r="day" aria-pressed="true">Day</button><button data-r="week" aria-pressed="false">Week</button><button data-r="month" aria-pressed="false">Month</button><button data-r="year" aria-pressed="false">Year</button>
+    </div>
+    <div id="chartLabel"></div>
+    <svg id="chart" viewBox="0 0 340 160" role="img" aria-label="Usage chart"></svg>
+
+    <div class="tiles">
+      <div class="tile"><div class="l" id="eL"></div><div class="v"><span id="kwh">–</span> <small>kWh</small></div></div>
+      <div class="tile"><div class="l" id="cL"></div><div class="v" id="cost">–</div></div>
+    </div>
+    <div class="proj" id="projRow"><span class="l" id="projL"></span><span class="v" id="proj"></span></div>
+
+    <button id="signout">Sign out</button>
+    <div id="simBox" hidden><label for="sim">Simulate</label>
+      <select id="sim">
+        <option value="ok">Everything working</option><option value="off">Plug switched off</option>
+        <option value="plug">Plug not reachable</option><option value="hub">Hub offline</option>
+        <option value="phone">Phone offline</option><option value="noprice">No prices set</option>
+      </select>
+    </div>
+  </div>
+</main>
+
+<!-- ===================== LOGIC ===================== -->
+<script type="module">
+const PREVIEW = new URLSearchParams(location.search).has("preview");
+const DB_URL = "https://hgzech-home.europe-west1.firebasedatabase.app";
+const HUB_STALE_MS = 60000;            // heartbeat older than this: hub offline (the hub writes it every ~20 s)
+const DEFAULT_HOURS = { summer: "02-04,11-15", winter: "02-05,12-15" };   // Greek two-zone tariff (ΔΕΔΔΗΕ, 2025/26)
+const SUMMER = (m) => m >= 4 && m <= 10;                                    // month 1-12
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const $ = (id) => document.getElementById(id);
+
+let live = {}, today = {}, days = {}, settings = null, names = {}, heartbeat = null, offset = 0;
+let connected = null, everConnected = false, denied = false, sim = "ok";
+let range = "day", picked = null;      // picked: one bar tapped (date or month key); null = the whole period
+let fb = null;                         // Firebase handles (not used in preview)
+
+// ---------------------------------------------------------------- helpers
+const asObj = (v) => Array.isArray(v) ? Object.fromEntries(v.map((x, i) => [i, x]).filter(([, x]) => x != null)) : (v || {});
+const pad = (n) => String(n).padStart(2, "0");
+const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const hhmm = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const now = () => Date.now() + offset;
+const eur = (v) => "€" + (v < 10 ? v.toFixed(2) : v.toFixed(1));
+const kwhFmt = (v) => v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : Math.round(v).toString();
+function parseHours(s) {
+  if (s == null) return null;
+  const set = new Set();
+  for (const part of s.split(",").filter(Boolean)) {
+    const m = part.trim().match(/^(\d{2})-(\d{2})$/);
+    if (!m || !(+m[1] < +m[2] && +m[2] <= 24)) return null;
+    for (let h = +m[1]; h < +m[2]; h++) set.add(h);
+  }
+  return set;
+}
+const hoursFor = (month) => parseHours((settings || {})[SUMMER(month) ? "reduced_summer" : "reduced_winter"]) ??
+                            parseHours(DEFAULT_HOURS[SUMMER(month) ? "summer" : "winter"]);
+const prices = () => {
+  const s = settings || {};
+  const pn = typeof s.price_normal === "number" ? s.price_normal : null;
+  const pr = typeof s.price_reduced === "number" ? s.price_reduced : pn;
+  return pn == null ? null : { pn, pr };
+};
+const dayKwh = (d) => d ? (d.n || 0) + (d.r || 0) : 0;
+const dayCost = (d, p) => d ? (d.n || 0) * p.pn + (d.r || 0) * p.pr : 0;
+function niceMax(v) {
+  if (!(v > 0)) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
+}
+
+const plugId = () => Object.keys(live).sort()[0] || Object.keys(days).sort()[0] || null;   // one plug for now
+const hubUp = () => heartbeat != null && now() - heartbeat < HUB_STALE_MS;
+const phoneOffline = () => connected === false && everConnected;
+
+// ---------------------------------------------------------------- render
+function render() {
+  const id = plugId(), L = (id && live[id]) || null;
+  $("name").textContent = (id && names[id]) || (L && L.label) || "Plug";
+  // status: quiet when all is well (green dot only), one short line otherwise
+  let dot = "ok", problem = "", stale = false;
+  if (denied) { dot = "bad"; problem = `This account isn't allowed. Ask Hilmar to add it.`; }
+  else if (phoneOffline()) { dot = ""; problem = "No internet on this phone, showing the last values"; stale = true; }
+  else if (heartbeat == null && !L) { dot = ""; }
+  else if (!hubUp()) { dot = "bad"; problem = heartbeat ? `Hub offline since ${hhmm(heartbeat)}` : "Hub offline"; stale = true; }
+  else if (L && L.online === false) { dot = "warn"; problem = `Plug not reachable since ${hhmm(L.ts)}`; stale = true; }
+  $("dot").className = dot;
+  $("problem").textContent = problem;
+
+  const gone = stale && !phoneOffline();     // hub or plug can't tell us the current value
+  const w = L && typeof L.w === "number" ? L.w : null;
+  $("watts").textContent = gone || w == null ? "–" : w < 10 ? w.toFixed(1) : Math.round(w).toString();
+  $("watts").className = stale ? "stale" : "";
+  $("sub").textContent = !L ? "" : gone ? (w != null ? `Last reading ${Math.round(w)} W at ${hhmm(L.ts)}` : "")
+    : L.on === false ? "Plug off" : L.on === true ? "Plug on" : "";
+
+  for (const b of document.querySelectorAll(".pills button")) b.setAttribute("aria-pressed", String(b.dataset.r === range));
+  drawChart(id);
+  renderTotals(id);
+}
+
+// reduced-price hours of a date (for the day chart's shading)
+function bands(date) {
+  const set = hoursFor(date.getMonth() + 1), out = [];
+  for (let h = 0; h < 24; h++) if (set.has(h) && !set.has(h - 1)) { let e = h; while (set.has(e)) e++; out.push([h, e]); }
+  return out;
+}
+
+const W = 340, TOP = 12, BASE = 132;
+function drawChart(id) {
+  const svg = $("chart");
+  const t = id ? today[id] : null;
+  const d = new Date(now());
+  let out = "";
+  if (range === "day") {
+    const start = t && t.date === iso(d) ? t.start : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const pts = Object.entries(asObj(t && t.date === iso(d) ? t.w : null)).map(([i, v]) => [+i * 300000 + 150000, v])
+      .sort((a, b) => a[0] - b[0]);
+    const L = id && live[id];
+    if (L && typeof L.w === "number" && hubUp() && L.online !== false) pts.push([now() - start, L.w]);
+    const max = niceMax(Math.max(10, ...pts.map(p => p[1])) * 1.05);
+    const X = (ms) => (ms / 86400000 * W).toFixed(1), Y = (v) => (BASE - v / max * (BASE - TOP)).toFixed(1);
+    for (const [a, b] of bands(d)) out += `<rect x="${X(a * 3600000)}" y="${TOP}" width="${(X(b * 3600000) - X(a * 3600000)).toFixed(1)}" height="${BASE - TOP}" fill="var(--band)"/>`;
+    out += `<line x1="0" y1="${TOP}" x2="${W}" y2="${TOP}" stroke="var(--sep)"/><line x1="0" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="var(--text-3)" stroke-width=".6"/>`;
+    out += `<text x="0" y="${TOP + 12}">${max >= 1000 ? max / 1000 + " kW" : max + " W"}</text>`;
+    if (pts.length) {
+      // gaps of more than 15 min (plug offline, hub down) break the line
+      let line = "", prev = null;
+      for (const [ms, v] of pts) { line += (prev == null || ms - prev > 900000 ? "M" : "L") + X(ms) + "," + Y(v) + " "; prev = ms; }
+      let area = "", seg = [];
+      const flush = () => { if (seg.length > 1) area += `M${X(seg[0][0])},${BASE} ` + seg.map(([m, v]) => `L${X(m)},${Y(v)}`).join(" ") + ` L${X(seg[seg.length - 1][0])},${BASE} Z `; seg = []; };
+      prev = null;
+      for (const p of pts) { if (prev != null && p[0] - prev > 900000) flush(); seg.push(p); prev = p[0]; }
+      flush();
+      out += `<path d="${area}" fill="var(--accent-soft)"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"/>`;
+    } else out += `<text x="${W / 2}" y="${(TOP + BASE) / 2}" text-anchor="middle">No readings yet today</text>`;
+    for (const h of [0, 6, 12, 18, 24]) out += `<text x="${X(h * 3600000)}" y="${BASE + 16}" text-anchor="${h === 0 ? "start" : h === 24 ? "end" : "middle"}">${h}</text>`;
+    $("chartLabel").textContent = "Today, power" + (prices() && prices().pr !== prices().pn ? " (shaded: reduced price)" : "");
+  } else {
+    const B = buckets(id), max = niceMax(Math.max(0.01, ...B.map(b => b.kwh)) * 1.1), n = B.length, bw = W / n;
+    out += `<line x1="0" y1="${TOP}" x2="${W}" y2="${TOP}" stroke="var(--sep)"/><line x1="0" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="var(--text-3)" stroke-width=".6"/>`;
+    out += `<text x="0" y="${TOP + 12}">${max} kWh</text>`;
+    B.forEach((b, i) => {
+      const h = b.kwh / max * (BASE - TOP), x = i * bw + bw * .17, wdt = bw * .66;
+      const fill = b.partial ? "var(--accent-faint)" : "var(--accent)";
+      const op = picked && picked !== b.key ? ' opacity=".35"' : "";
+      if (h > 0) out += `<rect class="bar" data-k="${b.key}" x="${x.toFixed(1)}" y="${(BASE - h).toFixed(1)}" width="${wdt.toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" rx="${Math.min(3, wdt / 3).toFixed(1)}" fill="${fill}"${op}/>`;
+      out += `<rect class="bar" data-k="${b.key}" x="${(i * bw).toFixed(1)}" y="${TOP}" width="${bw.toFixed(1)}" height="${BASE - TOP + 20}" fill="transparent"/>`;
+      if (b.label) out += `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${BASE + 16}" text-anchor="middle">${b.label}</text>`;
+    });
+    $("chartLabel").textContent = range === "year" ? "This year, energy per month" : `${range === "week" ? "This week" : MONTHS_LONG[d.getMonth()]}, energy per day`;
+  }
+  svg.innerHTML = out;
+  for (const r of svg.querySelectorAll(".bar")) r.onclick = () => { picked = picked === r.dataset.k ? null : r.dataset.k; render(); };
+}
+
+// bars of the current week / month / year: [{key, label, kwh, cost, partial}]
+function buckets(id) {
+  const D = (id && days[id]) || {}, p = prices(), d = new Date(now()), out = [];
+  const one = (date) => { const x = D[iso(date)]; return { kwh: dayKwh(x), cost: p ? dayCost(x, p) : null }; };
+  if (range === "week" || range === "month") {
+    const first = range === "week" ? new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7)
+                                   : new Date(d.getFullYear(), d.getMonth(), 1);
+    const n = range === "week" ? 7 : new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    for (let i = 0; i < n; i++) {
+      const x = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i), v = one(x);
+      out.push({ key: iso(x), label: range === "week" ? WD[i] : (i % 5 === 0 ? String(i + 1) : ""), ...v,
+                 partial: iso(x) === iso(d), future: x > d,
+                 name: range === "week" ? `${WD[i]} ${x.getDate()} ${MONTHS[x.getMonth()]}` : `${x.getDate()} ${MONTHS[x.getMonth()]}` });
+    }
+  } else {
+    for (let m = 0; m < 12; m++) {
+      let kwh = 0, cost = p ? 0 : null;
+      for (const [k, x] of Object.entries(D)) if (k.startsWith(`${d.getFullYear()}-${pad(m + 1)}-`)) { kwh += dayKwh(x); if (p) cost += dayCost(x, p); }
+      out.push({ key: `${d.getFullYear()}-${pad(m + 1)}`, label: MONTHS[m][0], kwh, cost, partial: m === d.getMonth(), name: MONTHS_LONG[m] });
+    }
+  }
+  return out;
+}
+
+function renderTotals(id) {
+  const D = (id && days[id]) || {}, p = prices(), d = new Date(now());
+  let label, kwh, cost;
+  if (range === "day") {
+    const x = D[iso(d)]; label = "Today"; kwh = dayKwh(x); cost = p ? dayCost(x, p) : null;
+  } else {
+    const B = buckets(id), b = picked && B.find(b => b.key === picked);
+    if (b) { label = b.name; kwh = b.kwh; cost = b.cost; }
+    else {
+      label = range === "week" ? "This week" : range === "month" ? MONTHS_LONG[d.getMonth()] : String(d.getFullYear());
+      kwh = B.reduce((a, b) => a + b.kwh, 0); cost = p ? B.reduce((a, b) => a + b.cost, 0) : null;
+    }
+  }
+  const has = id && Object.keys(D).length;
+  $("eL").textContent = label;
+  $("kwh").textContent = has ? kwhFmt(kwh) : "–";
+  $("cL").textContent = "Cost";
+  if (!p) $("cost").innerHTML = '<button class="link" id="setPrice">Set prices</button>';
+  else $("cost").textContent = has ? eur(cost) : "–";
+  if (!p) $("setPrice").onclick = openSettings;
+  // projection for this month: cost so far + average day x days left (average of the last up-to-7 full days;
+  // with no full day yet, today so far scaled up to a whole day)
+  const pr = p && projection(D, p, d);
+  $("projRow").hidden = !pr;
+  if (pr) { $("projL").textContent = `${MONTHS_LONG[d.getMonth()]} at this rate`; $("proj").textContent = "≈ " + eur(pr); }
+}
+function projection(D, p, d) {
+  const full = [];
+  // a day counts as full if the day before has data too (the plug's first day is usually only part of a day)
+  const at = (k) => D[iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() - k))];
+  for (let k = 1; k <= 7; k++) if (at(k) && at(k + 1)) full.push(dayCost(at(k), p));
+  const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), frac = (d.getTime() - midnight) / 86400000;
+  const daysIn = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  if (full.length) {
+    const perDay = full.reduce((a, b) => a + b, 0) / full.length;
+    let soFar = 0;                                     // this month until now, today included
+    for (const [k, x] of Object.entries(D)) if (k.startsWith(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-`)) soFar += dayCost(x, p);
+    return soFar + perDay * (daysIn - d.getDate() + 1 - frac);
+  }
+  // no full day yet: today's rate over the hours actually measured (a new plug may have started this afternoon)
+  const t = D[iso(d)], tw = today[plugId()];
+  const idx = tw && tw.date === iso(d) ? Object.keys(asObj(tw.w)).map(Number) : [];
+  const measured = frac - (idx.length ? Math.min(...idx) * 300000 / 86400000 : 0);
+  if (!t || measured < 1 / 24) return null;
+  return dayCost(t, p) / measured * daysIn;
+}
+
+// ---------------------------------------------------------------- settings
+function openSettings() {
+  const id = plugId(), s = settings || {};
+  $("sName").value = (id && names[id]) || (id && live[id] && live[id].label) || "";
+  $("sPn").value = typeof s.price_normal === "number" ? s.price_normal : "";
+  $("sPr").value = typeof s.price_reduced === "number" ? s.price_reduced : "";
+  $("sHs").value = s.reduced_summer ?? DEFAULT_HOURS.summer;
+  $("sHw").value = s.reduced_winter ?? DEFAULT_HOURS.winter;
+  $("setErr").textContent = "";
+  $("settings").hidden = false; $("gear").setAttribute("aria-expanded", "true");
+}
+function closeSettings() { $("settings").hidden = true; $("gear").setAttribute("aria-expanded", "false"); }
+$("gear").onclick = () => $("settings").hidden ? openSettings() : closeSettings();
+$("setCancel").onclick = closeSettings;
+for (const i of ["sName", "sPn", "sPr", "sHs", "sHw"]) $(i).addEventListener("input", () => { $("setErr").textContent = ""; });
+$("settings").onsubmit = async (e) => {
+  e.preventDefault();
+  const num = (v) => { v = v.trim().replace(",", "."); if (!v) return undefined; const n = Number(v); return isFinite(n) && n >= 0 && n < 5 ? n : NaN; };
+  const pn = num($("sPn").value), pr = num($("sPr").value);
+  const hs = $("sHs").value.replace(/\s/g, ""), hw = $("sHw").value.replace(/\s/g, "");
+  const name = $("sName").value.trim();
+  if (Number.isNaN(pn) || Number.isNaN(pr)) return $("setErr").textContent = "Enter prices like 0.20";
+  if (pr !== undefined && pn === undefined) return $("setErr").textContent = "Enter the normal price too";
+  if (parseHours(hs) == null || parseHours(hw) == null) return $("setErr").textContent = "Enter hours like 02-04,11-15";
+  const rec = { reduced_summer: hs, reduced_winter: hw };
+  if (pn !== undefined) rec.price_normal = pn;
+  if (pr !== undefined) rec.price_reduced = pr;
+  if (PREVIEW) { settings = rec; const id = plugId(); if (name) names[id] = name; closeSettings(); render(); return; }
+  try {
+    const id = plugId();
+    await fb.set(fb.ref(fb.db, "plugs/settings"), { ...rec, by: fb.auth.currentUser.uid, updated: fb.serverTimestamp() });
+    if (id) await (name ? fb.set(fb.ref(fb.db, "plugs/names/" + id), name) : fb.remove(fb.ref(fb.db, "plugs/names/" + id)));
+    closeSettings();
+  } catch (err) { $("setErr").textContent = `Couldn't save (${err.code || err.message})`; }
+};
+
+for (const b of document.querySelectorAll(".pills button")) b.onclick = () => { range = b.dataset.r; picked = null; render(); };
+setInterval(render, 5000);
+
+// ---------------------------------------------------------------- preview: sample data, no Firebase
+function startPreview() {
+  $("app").hidden = false; $("signout").hidden = true; $("simBox").hidden = false;
+  const id = "sample_plug", d = new Date(), t0 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  let s = 7; const r = () => { s = s * 16807 % 2147483647; return s / 2147483647; };
+  const w = {}, nowIdx = Math.floor((d.getTime() - t0) / 300000);
+  for (let i = 0; i < nowIdx; i++) w[i] = Math.round((i % 7 < 3 ? 120 + r() * 50 : 2 + r() * 5) * 10) / 10;
+  const D = {};
+  for (let k = 0; k < 40; k++) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() - k); const v = k ? 0.8 + r() * 0.35 : (d.getHours() + 1) / 24; D[iso(x)] = { n: +(v * .78).toFixed(3), r: +(v * .22).toFixed(3) }; }
+  const base = () => {
+    live = { [id]: { online: true, on: true, w: 168.4, label: "Fridge", ts: Date.now() - 4000 } };
+    today = { [id]: { date: iso(d), start: t0, step: 300, w } }; days = { [id]: D };
+    settings = { price_normal: 0.2, price_reduced: 0.13, reduced_summer: DEFAULT_HOURS.summer, reduced_winter: DEFAULT_HOURS.winter };
+    heartbeat = Date.now() - 5000; connected = true; everConnected = true;
+  };
+  base();
+  $("sim").onchange = () => {
+    sim = $("sim").value; base();
+    if (sim === "off") Object.assign(live[id], { on: false, w: 0 });
+    if (sim === "plug") Object.assign(live[id], { online: false, ts: Date.now() - 20 * 60000 });
+    if (sim === "hub") heartbeat = Date.now() - 25 * 60000;
+    if (sim === "phone") connected = false;
+    if (sim === "noprice") settings = null;
+    render();
+  };
+  setInterval(() => { if (sim === "ok" || sim === "noprice") heartbeat = Date.now(); }, 5000);
+  render();
+}
+
+// ---------------------------------------------------------------- live: Firebase
+async function startLive() {
+  const [{ initializeApp }, A, Dbm] = await Promise.all([
+    import("https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"),
+    import("https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js")]);
+  // Same Firebase project and web config as the piano page (not secret; access is enforced by the database rules).
+  const app = initializeApp({
+    apiKey: "AIzaSyBlOlfmPbzm5fyTPtsASnBwFhWTRJ816Ac",
+    authDomain: "ikea-plug-bridge-hz.firebaseapp.com",
+    databaseURL: "https://ikea-plug-bridge-hz-default-rtdb.firebaseio.com",
+    projectId: "ikea-plug-bridge-hz",
+    storageBucket: "ikea-plug-bridge-hz.firebasestorage.app",
+    messagingSenderId: "98941497958",
+    appId: "1:98941497958:web:c10640d0b2a0ac42fcf3a7"
+  });
+  const auth = A.getAuth(app), db = Dbm.getDatabase(app, DB_URL);
+  fb = { auth, db, ref: Dbm.ref, set: Dbm.set, remove: Dbm.remove, serverTimestamp: Dbm.serverTimestamp };
+  $("signin").onclick = () => A.signInWithPopup(auth, new A.GoogleAuthProvider())
+    .catch(e => { $("signin-box").querySelector("p").textContent = "Sign-in failed: " + e.code; });
+  $("signout").onclick = () => A.signOut(auth);
+  Dbm.onValue(Dbm.ref(db, ".info/serverTimeOffset"), s => { offset = s.val() || 0; render(); });
+  Dbm.onValue(Dbm.ref(db, ".info/connected"), s => { connected = s.val() === true; if (connected) everConnected = true; render(); });
+  let unsubs = [];
+  A.onAuthStateChanged(auth, (u) => {
+    unsubs.forEach(f => f()); unsubs = [];
+    live = {}; today = {}; days = {}; settings = null; names = {}; heartbeat = null; denied = false;
+    $("signin-box").hidden = !!u; $("app").hidden = !u;
+    if (!u) return;
+    const no = () => { denied = true; render(); };
+    const on = (path, fn) => unsubs.push(Dbm.onValue(Dbm.ref(db, "plugs/" + path), s => { fn(s.val()); render(); }, no));
+    on("hub", v => heartbeat = v);
+    on("live", v => live = v || {});
+    on("today", v => today = v || {});
+    on("days", v => days = v || {});
+    on("settings", v => settings = v);
+    on("names", v => names = v || {});
+  });
+}
+
+if (PREVIEW) startPreview(); else startLive();
+</script>
+</body>
+</html>
