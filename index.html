@@ -189,6 +189,7 @@
     <div class="hero"><span id="watts">–</span><span class="unit">W</span></div>
     <div id="sub"></div>
     <div id="overall" hidden><b id="ovV"></b><span id="ovL"></span></div>
+    <p id="plugNote" class="hint" style="margin-top: 20px" hidden>Nothing is kept while a plug isn't assigned. Each time you plug it into something new, the average starts again. A plug pulled out of the wall can't report that: for about 5 minutes the page keeps showing its last value, then it says the plug isn't reachable.</p>
 
     <div id="history">
     <div class="pills" role="group" aria-label="Time range">
@@ -403,6 +404,7 @@ function render() {
   if (dev && dev.startsWith("plug:") && linkOf(dev.slice(5))) dev = linkOf(dev.slice(5));
   const pv = plugView();
   $("history").hidden = !!pv;
+  $("plugNote").hidden = !pv;
   if (pv) return renderPlug(pv);
   const id = devId(), plug = id && plugOf(id), L = (plug && live[plug]) || null;
   $("name").textContent = id ? devName(id) : "Electricity";
