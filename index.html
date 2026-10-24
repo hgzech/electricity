@@ -165,11 +165,13 @@
 
     <form id="settings" hidden novalidate>
       <h2>Settings</h2>
-      <h3>This device</h3>
-      <label class="fld"><span>Name</span><input id="sName" maxlength="40" autocomplete="off"></label>
+      <div id="devSection">
+        <h3>This device</h3>
+        <label class="fld"><span>Name</span><input id="sName" maxlength="40" autocomplete="off"></label>
+      </div>
       <h3>Plugs</h3>
       <div id="plugFields"></div>
-      <p class="hint">A plug counts for the device it's set to from the moment you save. Moving it back continues that device's history.</p>
+      <p class="hint">A plug counts for the device it's set to from the moment you save. Moving it back continues that device's history. “Nothing” is for a quick look: the plug shows its watts and average in the device menu, and nothing is kept.</p>
       <h3>Prices</h3>
       <div class="f2">
         <label class="fld"><span>Normal price, €/kWh</span><input id="sPn" inputmode="decimal" placeholder="0.20"></label>
@@ -188,6 +190,7 @@
     <div id="sub"></div>
     <div id="overall" hidden><b id="ovV"></b><span id="ovL"></span></div>
 
+    <div id="history">
     <div class="pills" role="group" aria-label="Time range">
       <button data-r="day" aria-pressed="true">Day</button><button data-r="week" aria-pressed="false">Week</button><button data-r="month" aria-pressed="false">Month</button><button data-r="year" aria-pressed="false">Year</button>
     </div>
@@ -203,6 +206,7 @@
       <div class="tile"><div class="l" id="cL"></div><div class="v" id="cost">–</div></div>
     </div>
     <div class="proj" id="projRow"><span class="l" id="projL"></span><span class="v" id="proj"></span></div>
+    </div>
 
     <button id="signout">Sign out</button>
     <div id="simBox" hidden><label for="sim">Simulate</label>
@@ -282,8 +286,10 @@ function niceMax(v) {
 
 const devName = (did) => (devices[did] && devices[did].name) || did;
 const devIds = () => Object.keys(devices).sort((a, b) => devName(a).localeCompare(devName(b)));
-// the device shown: the remembered one if it still exists, else the first by name
-const devId = () => devices[dev] ? dev : devIds()[0] || null;
+// "plug:<n>": a plug set to no device, shown on its own (a quick look; nothing is kept)
+const plugView = () => dev && dev.startsWith("plug:") && plugNums().includes(dev.slice(5)) && !linkOf(dev.slice(5)) ? dev.slice(5) : null;
+// the device shown: the remembered one if it still exists, else the first by name (none while a plug is shown)
+const devId = () => devices[dev] ? dev : plugView() ? null : devIds()[0] || null;
 // a plug's current link: the device of its latest link record ("" / null = none)
 function linkOf(plug) {
   let best = null;
@@ -356,10 +362,8 @@ const monthAt = (s, n) => s.h < 1 ? null : { kwh: s.kwh / s.h * 24 * n, cost: s.
 const estFmt = (e) => e.cost != null ? eur(e.cost) : `${kwhFmt(e.kwh)} kWh`;
 
 // ---------------------------------------------------------------- render
-function render() {
-  const id = devId(), plug = id && plugOf(id), L = (plug && live[plug]) || null;
-  $("name").textContent = id ? devName(id) : "Electricity";
-  // status: quiet when all is well (green dot only), one short line otherwise
+// status: quiet when all is well (green dot only), one short line otherwise
+function status(plug, L) {
   let dot = "ok", problem = "", stale = false;
   if (denied) { dot = "bad"; problem = `This account isn't allowed. Ask Hilmar to add it.`; }
   else if (phoneOffline()) { dot = ""; problem = "No internet on this phone, showing the last values"; stale = true; }
@@ -369,6 +373,40 @@ function render() {
   else if (L && L.online === false) { dot = "warn"; problem = `Plug ${plug} not reachable since ${hhmm(L.ts)}`; stale = true; }
   $("dot").className = dot;
   $("problem").textContent = problem;
+  return stale;
+}
+
+// a plug set to no device: its watts and the average since then, nothing else (nothing is kept)
+function renderPlug(n) {
+  const L = live[n] || null;
+  $("name").textContent = `Plug ${n}`;
+  const stale = status(n, L), gone = stale && !phoneOffline();
+  const w = L && typeof L.w === "number" ? L.w : null;
+  $("watts").textContent = gone || w == null ? "–" : wFmt(w);
+  $("watts").className = stale ? "stale" : "";
+  const mins = L && L.since ? Math.max(0, Math.round((now() - L.since) / 60000)) : null;
+  $("sub").textContent = "Not assigned to a device" + (mins != null ? ` · since ${hhmm(L.since)} (${mins < 60 ? mins + " min" : Math.floor(mins / 60) + " h " + (mins % 60) + " min"})` : "");
+  const avg = L && typeof L.avg === "number" ? L.avg : null;
+  $("overall").hidden = avg == null;
+  if (avg != null) {
+    // a month at this average: reduced-price hours priced by their share of the day (this month's hours)
+    const p = prices(), kwh = avg * 24 * AVG_MONTH / 1000, share = hoursFor(new Date(now()).getMonth() + 1).size / 24;
+    const e = { kwh, cost: p ? kwh * (p.pn * (1 - share) + p.pr * share) : null };
+    $("ovV").textContent = `Average ${wFmt(avg)} W`;
+    $("ovL").textContent = ` · ≈ ${estFmt(e)} a month at that`;
+  }
+  renderMenu();
+}
+
+function render() {
+  // a shown plug that got a device again: show that device
+  if (dev && dev.startsWith("plug:") && linkOf(dev.slice(5))) dev = linkOf(dev.slice(5));
+  const pv = plugView();
+  $("history").hidden = !!pv;
+  if (pv) return renderPlug(pv);
+  const id = devId(), plug = id && plugOf(id), L = (plug && live[plug]) || null;
+  $("name").textContent = id ? devName(id) : "Electricity";
+  const stale = status(plug, L);
 
   const gone = stale && !phoneOffline();     // hub or plug can't tell us the current value
   const w = L && typeof L.w === "number" ? L.w : null;
@@ -606,6 +644,15 @@ function renderMenu() {
     b.onclick = () => selectDevice(did);
     list.append(b);
   }
+  for (const n of plugNums().filter(n => !linkOf(n))) {            // plugs set to no device: a quick look
+    const b = document.createElement("button"), L = live[n];
+    b.className = "dev"; b.type = "button"; b.setAttribute("aria-current", String(dev === "plug:" + n));
+    b.innerHTML = `<span class="txt"><span class="t"></span><span class="s"></span></span>${CHECK}`;
+    b.querySelector(".t").textContent = `Plug ${n}`;
+    b.querySelector(".s").textContent = "Not assigned" + (L && L.online !== false && typeof L.w === "number" && hubUp() ? ` · ${wFmt(L.w)} W` : "");
+    b.onclick = () => selectDevice("plug:" + n);
+    list.append(b);
+  }
   const add = document.createElement("button");
   add.className = "dev add"; add.type = "button"; add.hidden = !$("newDev").hidden;
   add.innerHTML = '<span class="txt"><span class="t">New device</span></span>';
@@ -644,6 +691,7 @@ function openSettings() {
   closeMenu();
   const id = devId(), s = settings || {};
   $("sName").value = id ? devName(id) : "";
+  $("devSection").hidden = !id;
   // one choice per plug: which device it measures ("Nothing" = not counted for any device)
   const box = $("plugFields");
   box.replaceChildren();
@@ -697,8 +745,11 @@ $("settings").onsubmit = async (e) => {
   const pricesChanged = !same(Object.fromEntries(Object.entries(rec).sort()), Object.fromEntries(Object.entries(keep).filter(([, v]) => v !== undefined).sort()));
   if (PREVIEW) {
     settings = rec; if (id) devices[id] = { ...devices[id], name };
-    for (const [n, did] of moves) (assign[n] ??= {})["p" + Date.now() + n] = linkRec(did);
-    closeSettings(); render(); return;
+    for (const [n, did] of moves) {
+      (assign[n] ??= {})["p" + Date.now() + n] = linkRec(did);
+      if (!did) Object.assign(live[n] ??= {}, { since: Date.now() - 7 * 60000, avg: 1.8 });   // as the hub would
+    }
+    closeSettings(); afterMoves(moves); render(); return;
   }
   try {
     const uid = fb.auth.currentUser.uid, jobs = [];
@@ -706,9 +757,14 @@ $("settings").onsubmit = async (e) => {
     if (id && name !== devName(id)) jobs.push(fb.set(fb.ref(fb.db, "plugs/devices/" + id), { name, by: uid }));
     for (const [n, did] of moves) jobs.push(fb.set(fb.push(fb.ref(fb.db, "plugs/assign/" + n)), linkRec(did)));
     await Promise.all(jobs);
-    closeSettings();
+    closeSettings(); afterMoves(moves);
   } catch (err) { $("setErr").textContent = `Couldn't save (${err.code || err.message})`; }
 };
+// a plug just set to "Nothing": show it (watts and its average since now)
+function afterMoves(moves) {
+  const q = moves.find(([, did]) => !did);
+  if (q) selectDevice("plug:" + q[0]);
+}
 
 // ---------------------------------------------------------------- preview: sample data, no Firebase
 function startPreview() {
