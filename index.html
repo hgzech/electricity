@@ -50,7 +50,27 @@
 
   .top { display: flex; align-items: center; justify-content: space-between; }
   .name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #devBtn { display: flex; align-items: center; gap: 4px; min-width: 0; border: 0; background: none; padding: 0; text-align: left; }
+  #devBtn svg { flex: none; width: 22px; height: 22px; fill: none; stroke: var(--text-2); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  #devBtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+  /* device menu */
+  #devMenu { margin-top: 12px; padding: 6px; border-radius: 14px; background: var(--card); }
+  .dev { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 10px; border-radius: 10px; text-align: left; }
+  .dev:active { background: var(--sep); }
+  .dev .txt { flex: 1; min-width: 0; }
+  .dev .t { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dev .s { display: block; font-size: 13px; color: var(--text-2); }
+  .dev .check { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; visibility: hidden; }
+  .dev[aria-current="true"] .check { visibility: visible; }
+  .dev.add .t { color: var(--accent); font-weight: 500; }
+  #newDev { display: flex; gap: 8px; padding: 6px; }
+  #newDev input { flex: 1; min-width: 0; height: 40px; box-sizing: border-box; border: 1px solid var(--sep); border-radius: 10px; padding: 0 10px;
+                  background: var(--bg); color: var(--text); font: 16px var(--font); }
+  #newDev button { border: 0; border-radius: 999px; padding: 0 16px; background: var(--pill-on-bg); color: var(--pill-on-text); font-weight: 600; }
+  #newErr { font-size: 13px; color: var(--bad); padding: 0 10px 6px; }
+  #newErr:empty { display: none; }
+  .title { min-width: 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
   #dot.ok { background: var(--ok); } #dot.warn { background: var(--warn); } #dot.bad { background: var(--bad); }
   .icon-btn { flex: none; width: 44px; height: 44px; margin-right: -10px; border: 0; background: none; border-radius: 50%;
@@ -100,8 +120,10 @@
   .f2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .fld { display: block; margin-bottom: 10px; }
   .fld span { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
-  .fld input { width: 100%; box-sizing: border-box; height: 40px; border: 1px solid var(--sep); border-radius: 10px; padding: 0 10px;
+  .fld input, .fld select { width: 100%; box-sizing: border-box; height: 40px; border: 1px solid var(--sep); border-radius: 10px; padding: 0 10px;
                background: var(--bg); color: var(--text); font: 16px var(--font); }
+  #settings h3 { margin: 14px 0 8px; font-size: 13px; font-weight: 600; color: var(--text-2); letter-spacing: .03em; text-transform: uppercase; }
+  #settings h3:first-of-type { margin-top: 4px; }
   .hint { font-size: 13px; color: var(--text-2); margin: -4px 0 10px; }
   #setErr { font-size: 13px; color: var(--bad); margin-bottom: 8px; }
   #setErr:empty { display: none; }
@@ -125,16 +147,30 @@
 
   <div id="app" hidden>
     <div class="top">
-      <div class="name"><h1 id="name">Plug</h1><span id="dot"></span></div>
+      <div class="name">
+        <button id="devBtn" aria-expanded="false" aria-controls="devMenu" aria-label="Choose device"><span id="name" class="title">Electricity</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+        <span id="dot"></span>
+      </div>
       <button class="icon-btn" id="gear" aria-label="Settings" aria-expanded="false">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>
     </div>
     <div id="problem" role="status"></div>
 
+    <div id="devMenu" hidden>
+      <div id="devList"></div>
+      <form id="newDev" hidden novalidate><input id="newName" maxlength="40" placeholder="Washing machine" autocomplete="off" aria-label="New device name"><button type="submit">Add</button></form>
+      <div id="newErr"></div>
+    </div>
+
     <form id="settings" hidden novalidate>
       <h2>Settings</h2>
-      <label class="fld"><span>Plug name</span><input id="sName" maxlength="40" autocomplete="off"></label>
+      <h3>This device</h3>
+      <label class="fld"><span>Name</span><input id="sName" maxlength="40" autocomplete="off"></label>
+      <h3>Plugs</h3>
+      <div id="plugFields"></div>
+      <p class="hint">A plug counts for the device it's set to from the moment you save. Moving it back continues that device's history.</p>
+      <h3>Prices</h3>
       <div class="f2">
         <label class="fld"><span>Normal price, €/kWh</span><input id="sPn" inputmode="decimal" placeholder="0.20"></label>
         <label class="fld"><span>Reduced price, €/kWh</span><input id="sPr" inputmode="decimal" placeholder="0.13"></label>
@@ -192,14 +228,18 @@ const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "Ju
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const $ = (id) => document.getElementById(id);
 
-// raw: date -> that day's readings {start, hHH} for the plug shown; only days looked at are loaded
-let live = {}, raw = {}, days = {}, settings = null, names = {}, heartbeat = null, offset = 0;
+// From Firebase: devices {did: {name}}, assign {plug: {key: {device, at}}} (each plug's link history), live
+// {plug: {online, on, w, ts}}, days {did: {date: {n, r, m}}}. raw: "did/date" -> that day's readings {start, hHH}
+// (only days looked at are loaded). dev: the device shown (remembered on this phone).
+let devices = {}, assign = {}, live = {}, raw = {}, days = {}, settings = null, heartbeat = null, offset = 0;
+let dev = null;
+try { dev = localStorage.getItem("plugs.device"); } catch (e) {}
 let connected = null, everConnected = false, denied = false, sim = "ok";
 // range: day | week | month | year. anchor: a day inside the period shown (a Date), null = the current period.
 // picked: one bar tapped (date or month key) or null = the whole period.
 let range = "day", anchor = null, picked = null;
 let fb = null;                         // Firebase handles (not used in preview)
-let watchRaw = () => {};               // (plug id, date) -> make sure that day's readings load (live / preview)
+let watchRaw = () => {};               // (device, date) -> make sure that day's readings load (live / preview)
 
 // ---------------------------------------------------------------- helpers
 const pad = (n) => String(n).padStart(2, "0");
@@ -240,8 +280,19 @@ function niceMax(v) {
   return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
 }
 
-const plugId = () => Object.keys(live).sort()[0] || Object.keys(days).sort()[0] || null;   // one plug for now
-const plugDays = () => { const id = plugId(); return (id && days[id]) || {}; };
+const devName = (did) => (devices[did] && devices[did].name) || did;
+const devIds = () => Object.keys(devices).sort((a, b) => devName(a).localeCompare(devName(b)));
+// the device shown: the remembered one if it still exists, else the first by name
+const devId = () => devices[dev] ? dev : devIds()[0] || null;
+// a plug's current link: the device of its latest link record ("" / null = none)
+function linkOf(plug) {
+  let best = null;
+  for (const r of Object.values(assign[plug] || {})) if (r && typeof r.at === "number" && (!best || r.at >= best.at)) best = r;
+  return best ? best.device || null : null;
+}
+const plugNums = () => [...new Set([...Object.keys(live), ...Object.keys(assign)])].sort((a, b) => a - b);
+const plugOf = (did) => plugNums().find(n => linkOf(n) === did) || null;
+const plugDays = () => { const id = devId(); return (id && days[id]) || {}; };
 const hubUp = () => heartbeat != null && now() - heartbeat < HUB_STALE_MS;
 const phoneOffline = () => connected === false && everConnected;
 // the plug's first day with data: the arrows go back no further
@@ -306,24 +357,27 @@ const estFmt = (e) => e.cost != null ? eur(e.cost) : `${kwhFmt(e.kwh)} kWh`;
 
 // ---------------------------------------------------------------- render
 function render() {
-  const id = plugId(), L = (id && live[id]) || null;
-  $("name").textContent = (id && names[id]) || (L && L.label) || "Plug";
+  const id = devId(), plug = id && plugOf(id), L = (plug && live[plug]) || null;
+  $("name").textContent = id ? devName(id) : "Electricity";
   // status: quiet when all is well (green dot only), one short line otherwise
   let dot = "ok", problem = "", stale = false;
   if (denied) { dot = "bad"; problem = `This account isn't allowed. Ask Hilmar to add it.`; }
   else if (phoneOffline()) { dot = ""; problem = "No internet on this phone, showing the last values"; stale = true; }
   else if (heartbeat == null && !L) { dot = ""; }
   else if (!hubUp()) { dot = "bad"; problem = heartbeat ? `Hub offline since ${hhmm(heartbeat)}` : "Hub offline"; stale = true; }
-  else if (L && L.online === false) { dot = "warn"; problem = `Plug not reachable since ${hhmm(L.ts)}`; stale = true; }
+  else if (!plug) { dot = ""; }
+  else if (L && L.online === false) { dot = "warn"; problem = `Plug ${plug} not reachable since ${hhmm(L.ts)}`; stale = true; }
   $("dot").className = dot;
   $("problem").textContent = problem;
 
   const gone = stale && !phoneOffline();     // hub or plug can't tell us the current value
   const w = L && typeof L.w === "number" ? L.w : null;
-  $("watts").textContent = gone || w == null ? "–" : wFmt(w);
-  $("watts").className = stale ? "stale" : "";
-  $("sub").textContent = !L ? "" : gone ? (w != null ? `Last reading ${Math.round(w)} W at ${hhmm(L.ts)}` : "")
-    : L.on === false ? "Plug off" : L.on === true ? "Plug on" : "";
+  $("watts").textContent = !plug || gone || w == null ? "–" : wFmt(w);
+  $("watts").className = stale || !plug ? "stale" : "";
+  $("sub").textContent = id && !plug ? "No plug on this device right now" : !L ? ""
+    : gone ? (w != null ? `Last reading ${Math.round(w)} W at ${hhmm(L.ts)}` : "")
+    : L.on === false ? `Plug ${plug} off` : L.on === true ? `Plug ${plug} on` : "";
+  renderMenu();
 
   // overall estimate: every day measured so far
   const ov = monthAt(sumDays(Object.keys(plugDays())), AVG_MONTH), f = firstDay();
@@ -338,7 +392,7 @@ function render() {
   $("prev").disabled = !(f && P.from > f);
   $("next").disabled = P.current;
   if (range === "day" && id) watchRaw(id, iso(P.from));
-  drawChart(id, P);
+  drawChart(id, plug, P);
   renderTotals(P);
 }
 
@@ -354,13 +408,13 @@ let scrub = null;                      // finger position on the chart, 0..1 of 
 const avgLine = (y, label) =>
   `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--text-2)" stroke-width="1" stroke-dasharray="4 3"/>` +
   `<text class="avg" x="${W}" y="${(y - 4).toFixed(1)}" text-anchor="end">${label}</text>`;
-function drawChart(id, P) {
+function drawChart(id, plug, P) {
   const svg = $("chart");
   let out = "", read = null, label;    // read: what the finger points at, shown instead of the label
   if (range === "day") {
-    const key = iso(P.from), r = raw[key], start = r && r.start ? r.start : P.from.getTime();
+    const r = raw[`${id}/${iso(P.from)}`], start = r && r.start ? r.start : P.from.getTime();
     const dayLen = P.to.getTime() - P.from.getTime();
-    const L = id && live[id], nowMs = Math.min(now() - start, dayLen);
+    const L = plug && live[plug], nowMs = Math.min(now() - start, dayLen);
     // steps: [from ms, to ms, W or null (plug unavailable)] since midnight; each reading holds until the next one
     const pts = readings(r);
     const liveOk = P.current && L && typeof L.w === "number" && hubUp() && L.online !== false;
@@ -395,12 +449,12 @@ function drawChart(id, P) {
           const x = X(Math.min(ms, s[1]));
           out += `<line x1="${x}" y1="${TOP}" x2="${x}" y2="${BASE}" stroke="var(--text)" stroke-width="1"/>`;
           if (s[2] != null) out += `<circle cx="${x}" cy="${Y(s[2])}" r="4" fill="var(--accent)" stroke="var(--bg)" stroke-width="2"/>`;
-          const val = s[2] == null ? "plug not reachable" : `${wFmt(s[2])} W`;
+          const val = s[2] == null ? "no reading" : `${wFmt(s[2])} W`;
           read = s === lastS && liveOk ? `Since ${hhmm(start + s[0])} · ${val} (now)` : `${hhmm(start + s[0])}–${hhmm(start + s[1])} · ${val}`;
         }
       }
     } else {
-      const msg = r === undefined ? "Loading…" : P.current ? "No readings yet today" : "No detailed readings for this day";
+      const msg = r === undefined && id ? "Loading…" : P.current ? "No readings yet today" : "No detailed readings for this day";
       out += `<text x="${W / 2}" y="${(TOP + BASE) / 2}" text-anchor="middle">${msg}</text>`;
     }
     for (const h of [0, 6, 12, 18, 24]) out += `<text x="${X(h * 3600000)}" y="${BASE + 16}" text-anchor="${h === 0 ? "start" : h === 24 ? "end" : "middle"}">${h}</text>`;
@@ -536,10 +590,77 @@ $("prev").onclick = () => step(-1);
 $("next").onclick = () => step(1);
 setInterval(render, 5000);
 
+// ---------------------------------------------------------------- device menu (tap the name)
+const CHECK = '<svg class="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
+function renderMenu() {
+  if ($("devMenu").hidden) return;
+  const cur = devId(), list = $("devList");
+  list.replaceChildren();
+  for (const did of devIds()) {
+    const b = document.createElement("button"), plug = plugOf(did), L = plug && live[plug];
+    b.className = "dev"; b.type = "button"; b.setAttribute("aria-current", String(did === cur));
+    const sub = plug ? `Plug ${plug}` + (L && L.online !== false && typeof L.w === "number" && hubUp() ? ` · ${wFmt(L.w)} W` : "") : "No plug";
+    b.innerHTML = `<span class="txt"><span class="t"></span><span class="s"></span></span>${CHECK}`;
+    b.querySelector(".t").textContent = devName(did);
+    b.querySelector(".s").textContent = sub;
+    b.onclick = () => selectDevice(did);
+    list.append(b);
+  }
+  const add = document.createElement("button");
+  add.className = "dev add"; add.type = "button"; add.hidden = !$("newDev").hidden;
+  add.innerHTML = '<span class="txt"><span class="t">New device</span></span>';
+  add.onclick = () => { $("newDev").hidden = false; renderMenu(); $("newName").focus(); };
+  list.append(add);
+}
+function openMenu() {
+  closeSettings();
+  $("devMenu").hidden = false; $("devBtn").setAttribute("aria-expanded", "true");
+  $("newDev").hidden = true; $("newName").value = ""; $("newErr").textContent = "";
+  renderMenu();
+}
+function closeMenu() { $("devMenu").hidden = true; $("devBtn").setAttribute("aria-expanded", "false"); }
+function selectDevice(did) {
+  dev = did; picked = null;
+  try { localStorage.setItem("plugs.device", did); } catch (e) {}
+  closeMenu(); render();
+}
+$("devBtn").onclick = () => $("devMenu").hidden ? openMenu() : closeMenu();
+$("newName").addEventListener("input", () => { $("newErr").textContent = ""; });
+$("newDev").onsubmit = async (e) => {
+  e.preventDefault();
+  const name = $("newName").value.trim();
+  if (!name) return $("newErr").textContent = "Enter a name";
+  if (devIds().some(d => devName(d).toLowerCase() === name.toLowerCase())) return $("newErr").textContent = "That name exists already";
+  if (PREVIEW) { const did = "d" + Date.now(); devices[did] = { name }; selectDevice(did); return; }
+  try {
+    const r = fb.push(fb.ref(fb.db, "plugs/devices"));
+    await fb.set(r, { name, by: fb.auth.currentUser.uid });
+    selectDevice(r.key);
+  } catch (err) { $("newErr").textContent = `Couldn't add (${err.code || err.message})`; }
+};
+
 // ---------------------------------------------------------------- settings
 function openSettings() {
-  const id = plugId(), s = settings || {};
-  $("sName").value = (id && names[id]) || (id && live[id] && live[id].label) || "";
+  closeMenu();
+  const id = devId(), s = settings || {};
+  $("sName").value = id ? devName(id) : "";
+  // one choice per plug: which device it measures ("Nothing" = not counted for any device)
+  const box = $("plugFields");
+  box.replaceChildren();
+  for (const n of plugNums()) {
+    const l = document.createElement("label"), sel = document.createElement("select");
+    l.className = "fld"; l.innerHTML = `<span>Plug ${n} measures</span>`;
+    sel.dataset.plug = n;
+    for (const did of [...devIds(), ""]) {
+      const o = document.createElement("option");
+      o.value = did; o.textContent = did ? devName(did) : "Nothing";
+      sel.append(o);
+    }
+    sel.value = linkOf(n) || "";
+    sel.addEventListener("change", () => { $("setErr").textContent = ""; });
+    l.append(sel); box.append(l);
+  }
+  if (!box.children.length) box.innerHTML = '<p class="hint">No plugs yet.</p>';
   $("sPn").value = typeof s.price_normal === "number" ? s.price_normal : "";
   $("sPr").value = typeof s.price_reduced === "number" ? s.price_reduced : "";
   $("sHs").value = s.reduced_summer ?? DEFAULT_HOURS.summer;
@@ -548,6 +669,7 @@ function openSettings() {
   $("settings").hidden = false; $("gear").setAttribute("aria-expanded", "true");
 }
 function closeSettings() { $("settings").hidden = true; $("gear").setAttribute("aria-expanded", "false"); }
+const linkRec = (did) => ({ device: did, at: PREVIEW ? Date.now() : fb.serverTimestamp(), by: PREVIEW ? "preview" : fb.auth.currentUser.uid });
 $("gear").onclick = () => $("settings").hidden ? openSettings() : closeSettings();
 $("setCancel").onclick = closeSettings;
 for (const i of ["sName", "sPn", "sPr", "sHs", "sHw"]) $(i).addEventListener("input", () => { $("setErr").textContent = ""; });
@@ -560,14 +682,30 @@ $("settings").onsubmit = async (e) => {
   if (Number.isNaN(pn) || Number.isNaN(pr)) return $("setErr").textContent = "Enter prices like 0.20";
   if (pr !== undefined && pn === undefined) return $("setErr").textContent = "Enter the normal price too";
   if (parseHours(hs) == null || parseHours(hw) == null) return $("setErr").textContent = "Enter hours like 02-04,11-15";
+  const id = devId();
+  if (id && !name) return $("setErr").textContent = "Enter a name for this device";
+  if (id && devIds().some(d => d !== id && devName(d).toLowerCase() === name.toLowerCase())) return $("setErr").textContent = "Another device has that name";
   const rec = { reduced_summer: hs, reduced_winter: hw };
   if (pn !== undefined) rec.price_normal = pn;
   if (pr !== undefined) rec.price_reduced = pr;
-  if (PREVIEW) { settings = rec; const id = plugId(); if (name) names[id] = name; closeSettings(); render(); return; }
+  // plugs whose device changed: a new link record, from now on
+  const moves = [...$("plugFields").querySelectorAll("select")].filter(s => s.value !== (linkOf(s.dataset.plug) || ""))
+    .map(s => [s.dataset.plug, s.value]);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const prev = settings || {}, keep = { reduced_summer: prev.reduced_summer, reduced_winter: prev.reduced_winter,
+                                         price_normal: prev.price_normal, price_reduced: prev.price_reduced };
+  const pricesChanged = !same(Object.fromEntries(Object.entries(rec).sort()), Object.fromEntries(Object.entries(keep).filter(([, v]) => v !== undefined).sort()));
+  if (PREVIEW) {
+    settings = rec; if (id) devices[id] = { ...devices[id], name };
+    for (const [n, did] of moves) (assign[n] ??= {})["p" + Date.now() + n] = linkRec(did);
+    closeSettings(); render(); return;
+  }
   try {
-    const id = plugId();
-    await fb.set(fb.ref(fb.db, "plugs/settings"), { ...rec, by: fb.auth.currentUser.uid, updated: fb.serverTimestamp() });
-    if (id) await (name ? fb.set(fb.ref(fb.db, "plugs/names/" + id), name) : fb.remove(fb.ref(fb.db, "plugs/names/" + id)));
+    const uid = fb.auth.currentUser.uid, jobs = [];
+    if (pricesChanged) jobs.push(fb.set(fb.ref(fb.db, "plugs/settings"), { ...rec, by: uid, updated: fb.serverTimestamp() }));
+    if (id && name !== devName(id)) jobs.push(fb.set(fb.ref(fb.db, "plugs/devices/" + id), { name, by: uid }));
+    for (const [n, did] of moves) jobs.push(fb.set(fb.push(fb.ref(fb.db, "plugs/assign/" + n)), linkRec(did)));
+    await Promise.all(jobs);
     closeSettings();
   } catch (err) { $("setErr").textContent = `Couldn't save (${err.code || err.message})`; }
 };
@@ -575,12 +713,12 @@ $("settings").onsubmit = async (e) => {
 // ---------------------------------------------------------------- preview: sample data, no Firebase
 function startPreview() {
   $("app").hidden = false; $("signout").hidden = true; $("simBox").hidden = false;
-  const id = "sample_plug", today = midnight(Date.now()), first = addDays(today, -39);
+  const today = midnight(Date.now()), first = addDays(today, -39);
   const seeded = (k) => { let s = [...k].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 2147483647, 7) || 7; return () => { s = s * 16807 % 2147483647; return s / 2147483647; }; };
   // a day's readings like the plug's: a compressor cycle every ~35 min, small changes in between
-  const genRaw = (k) => {
+  const genRaw = (did, k) => {
     const d = fromIso(k), t0 = d.getTime();
-    if (d < first || d > today) return null;
+    if (did !== "fridge" || d < first || d > today) return null;
     const r = seeded(k), out = {}, end = Math.min(86400, Math.floor((Date.now() - t0) / 1000));
     for (let s = +d === +first ? 13 * 3600 : 0, on = false; s < end; ) {
       const v = on ? 38 + r() * 5 : 1 + r() * 1.5;
@@ -596,18 +734,25 @@ function startPreview() {
     const v = (0.65 + r() * 0.3) * m / 24;
     D[iso(x)] = { n: +(v * .8).toFixed(3), r: +(v * .2).toFixed(3), m: +m.toFixed(3) };
   }
-  watchRaw = (pid, k) => { if (!(k in raw)) raw[k] = genRaw(k); };
+  // a second device that had the plug for a few days in September
+  const W2 = {};
+  for (let k = 26; k <= 30; k++) W2[iso(addDays(today, -k))] = { n: 1.1, r: 0.3, m: 24 };
+  for (let k = 26; k <= 30; k++) delete D[iso(addDays(today, -k))];
+  watchRaw = (did, k) => { if (!(`${did}/${k}` in raw)) raw[`${did}/${k}`] = genRaw(did, k); };
   const base = () => {
-    live = { [id]: { online: true, on: true, w: 40.2, label: "Fridge", ts: Date.now() - 4000 } };
-    days = { [id]: D };
+    devices = { fridge: { name: "Fridge" }, wash: { name: "Washing machine" } };
+    assign = { 1: { a: { device: "fridge", at: 0 }, b: { device: "wash", at: addDays(today, -30).getTime() },
+                    c: { device: "fridge", at: addDays(today, -25).getTime() } } };
+    live = { 1: { online: true, on: true, w: 40.2, ts: Date.now() - 4000 } };
+    days = { fridge: D, wash: W2 };
     settings = { price_normal: 0.2, price_reduced: 0.13, reduced_summer: DEFAULT_HOURS.summer, reduced_winter: DEFAULT_HOURS.winter };
     heartbeat = Date.now() - 5000; connected = true; everConnected = true;
   };
   base();
   $("sim").onchange = () => {
     sim = $("sim").value; base();
-    if (sim === "off") Object.assign(live[id], { on: false, w: 0 });
-    if (sim === "plug") Object.assign(live[id], { online: false, ts: Date.now() - 20 * 60000 });
+    if (sim === "off") Object.assign(live[1], { on: false, w: 0 });
+    if (sim === "plug") Object.assign(live[1], { online: false, ts: Date.now() - 20 * 60000 });
     if (sim === "hub") heartbeat = Date.now() - 25 * 60000;
     if (sim === "phone") connected = false;
     if (sim === "noprice") settings = null;
@@ -634,7 +779,7 @@ async function startLive() {
     appId: "1:98941497958:web:c10640d0b2a0ac42fcf3a7"
   });
   const auth = A.getAuth(app), db = Dbm.getDatabase(app, DB_URL);
-  fb = { auth, db, ref: Dbm.ref, set: Dbm.set, remove: Dbm.remove, serverTimestamp: Dbm.serverTimestamp };
+  fb = { auth, db, ref: Dbm.ref, set: Dbm.set, push: Dbm.push, serverTimestamp: Dbm.serverTimestamp };
   $("signin").onclick = () => A.signInWithPopup(auth, new A.GoogleAuthProvider())
     .catch(e => { $("signin-box").querySelector("p").textContent = "Sign-in failed: " + e.code; });
   $("signout").onclick = () => A.signOut(auth);
@@ -643,26 +788,29 @@ async function startLive() {
   let unsubs = [], rawKey = null, rawUnsub = null;
   const no = () => { denied = true; render(); };
   // only the day on screen is listened to; days seen before stay in memory
-  watchRaw = (pid, k) => {
-    const key = `${pid}/${k}`;
+  watchRaw = (did, k) => {
+    const key = `${did}/${k}`;
     if (key === rawKey) return;
     if (rawUnsub) rawUnsub();
     rawKey = key;
-    rawUnsub = Dbm.onValue(Dbm.ref(db, "plugs/raw/" + key), s => { raw[k] = s.val(); render(); }, no);
+    rawUnsub = Dbm.onValue(Dbm.ref(db, "plugs/raw/" + key), s => { raw[key] = s.val(); render(); }, no);
   };
   A.onAuthStateChanged(auth, (u) => {
     unsubs.forEach(f => f()); unsubs = [];
     if (rawUnsub) rawUnsub();
     rawUnsub = null; rawKey = null;
-    live = {}; raw = {}; days = {}; settings = null; names = {}; heartbeat = null; denied = false;
+    devices = {}; assign = {}; live = {}; raw = {}; days = {}; settings = null; heartbeat = null; denied = false;
     $("signin-box").hidden = !!u; $("app").hidden = !u;
     if (!u) return;
     const on = (path, fn) => unsubs.push(Dbm.onValue(Dbm.ref(db, "plugs/" + path), s => { fn(s.val()); render(); }, no));
     on("hub", v => heartbeat = v);
-    on("live", v => live = v || {});
+    // numeric keys (plug "1") can come back as arrays: keep them as objects
+    const obj = (v) => Array.isArray(v) ? Object.fromEntries(v.map((x, i) => [String(i), x]).filter(([, x]) => x != null)) : (v || {});
+    on("devices", v => devices = v || {});
+    on("assign", v => assign = obj(v));
+    on("live", v => live = obj(v));
     on("days", v => days = v || {});
     on("settings", v => settings = v);
-    on("names", v => names = v || {});
   });
 }
 
