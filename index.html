@@ -87,6 +87,9 @@
   #sub { margin-top: 6px; font-size: 15px; color: var(--text-2); }
   #overall { margin-top: 4px; font-size: 15px; color: var(--text-2); }
   #overall b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #plugNote { margin-top: 18px; }
+  .pillbtn { border: 0; border-radius: 999px; padding: 9px 18px; background: var(--pill-on-bg); color: var(--pill-on-text); font-weight: 600; font-size: 15px; margin-bottom: 14px; }
+  .pillbtn:disabled { opacity: .5; }
 
   .pills { display: flex; gap: 6px; margin-top: 22px; }
   .pills button { border: 0; border-radius: 999px; padding: 7px 15px; background: none; color: var(--text-2); font-size: 15px; font-weight: 500; }
@@ -189,7 +192,10 @@
     <div class="hero"><span id="watts">–</span><span class="unit">W</span></div>
     <div id="sub"></div>
     <div id="overall" hidden><b id="ovV"></b><span id="ovL"></span></div>
-    <p id="plugNote" class="hint" style="margin-top: 20px" hidden>Nothing is kept while a plug isn't assigned. Each time you plug it into something new, the average starts again. A plug pulled out of the wall can't report that: for about 5 minutes the page keeps showing its last value, then it says the plug isn't reachable.</p>
+    <div id="plugNote" hidden>
+      <button id="restart" type="button" class="pillbtn">Start new average</button>
+      <p class="hint">Nothing is kept while a plug isn't assigned. Moved it to something else? Start a new average. (It also starts again by itself when the plug was unreachable.) A plug pulled out of the wall can't report that: for about 5 minutes the page keeps showing its last value, then it says the plug isn't reachable.</p>
+    </div>
 
     <div id="history">
     <div class="pills" role="group" aria-label="Time range">
@@ -378,6 +384,16 @@ function status(plug, L) {
 }
 
 // a plug set to no device: its watts and the average since then, nothing else (nothing is kept)
+let restartAt = null;                  // when "Start new average" was tapped (server ms), until the hub has it
+$("restart").onclick = async () => {
+  const n = plugView();
+  if (!n) return;
+  restartAt = now(); render();
+  // a new "Nothing" record: the hub starts the session from its time
+  if (PREVIEW) { setTimeout(() => { Object.assign(live[n], { since: now(), avg: live[n].w }); render(); }, 1500); return; }
+  try { await fb.set(fb.push(fb.ref(fb.db, "plugs/assign/" + n)), linkRec("")); }
+  catch (err) { restartAt = null; render(); }
+};
 function renderPlug(n) {
   const L = live[n] || null;
   $("name").textContent = `Plug ${n}`;
@@ -387,7 +403,12 @@ function renderPlug(n) {
   $("watts").className = stale ? "stale" : "";
   const mins = L && L.since ? Math.max(0, Math.round((now() - L.since) / 60000)) : null;
   $("sub").textContent = "Not assigned to a device" + (mins != null ? ` · since ${hhmm(L.since)} (${mins < 60 ? mins + " min" : Math.floor(mins / 60) + " h " + (mins % 60) + " min"})` : "");
-  const avg = L && typeof L.avg === "number" ? L.avg : null;
+  // "Start new average" waits until the hub reports a session that started after the tap
+  if (restartAt && L && L.since && L.since >= restartAt - 2000) restartAt = null;
+  if (restartAt && Date.now() - restartAt > 30000) restartAt = null;
+  $("restart").disabled = !!restartAt || denied;
+  $("restart").textContent = restartAt ? "Starting…" : "Start new average";
+  const avg = restartAt ? null : L && typeof L.avg === "number" ? L.avg : null;
   $("overall").hidden = avg == null;
   if (avg != null) {
     // a month at this average: reduced-price hours priced by their share of the day (this month's hours)
